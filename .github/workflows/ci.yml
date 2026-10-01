@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  markdown:
+    name: Markdown formatting
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm run test:formatting
+      - run: npm run check:markdown
+
+  test:
+    name: Go ${{ matrix.go-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        go-version: ['1.24.x', stable, oldstable]
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go-version }}
+          cache: true
+
+      - name: Check formatting
+        run: test -z "$(gofmt -l .)"
+
+      - name: Verify modules
+        run: go mod verify
+
+      - name: Run tests
+        run: go test ./...
+
+      - name: Run vet
+        run: go vet ./...
+
+      - name: Regenerate checked-in fixtures
+        run: |
+          go generate ./internal/fuzzfixture ./internal/benchmarks
+          git diff --exit-code -- \
+            internal/fuzzfixture/monoslices_gen.go \
+            internal/benchmarks/monoslices_gen.go \
+            internal/benchmarks/cases_generated_test.go
+
+      - name: Run go tool smoke fixture
+        working-directory: internal/app/testdata/generate
+        run: |
+          trap 'rm -f monoslices_gen.go' EXIT
+          go generate .
+          go test ./...
+
+      - name: Run race tests on stable Go
+        if: matrix.go-version == 'stable'
+        run: go test -race ./...

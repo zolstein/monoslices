@@ -1,0 +1,7 @@
+# Formatting dependencies
+/node_modules/
+
+# Local benchmark output and profiles
+*.test
+*.pprof
+/coverage.out
